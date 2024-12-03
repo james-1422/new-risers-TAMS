@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaflet Map with Geocoding</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-control-geocoder/2.1.7/Control.Geocoder.js"></script>
+    <style>
+        #map { height: 400px; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        input, button { margin: 5px; padding: 10px; font-size: 14px; }
+        #result { margin: 10px 0; }
+        .error { background-color: red; color: white; }
+        .success { background-color: green; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Fetch Geolocations and Calculate Route</h1>
+    <div id="map"></div>
+    <div>
+        <label for="place1">Place 1:</label>
+        <input type="text" id="place1" placeholder="Enter first place">
+        <button id="btn-place1" onclick="fetchCoordinates('place1', 'start', 'btn-place1')">Fetch Location 1</button>
+    </div>
+    <div>
+        <label for="place2">Place 2:</label>
+        <input type="text" id="place2" placeholder="Enter second place">
+        <button id="btn-place2" onclick="fetchCoordinates('place2', 'end', 'btn-place2')">Fetch Location 2</button>
+    </div>
+    <div id="result"></div>
+    <div>
+        <!-- <label>Start Coordinates</label> -->
+        <input type="hidden" id="start" >
+    </div>
+    <div>
+        <!-- <label>End Coordinates:</label> -->
+        <input type="hidden" id="end">
+    </div>
+    <button onclick="calculateRoute()">Calculate Distance & Duration</button>
+    <div id="distanceResult">
+        <h2>Results:</h2>
+        <p id="distance"></p>
+        <p id="duration"></p>
+    </div>
+
+    <script>
+        // Initialize Leaflet Map
+        var map = L.map('map').setView([20.5937, 78.9629], 5); // Default to India
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        const API_KEY = "5b3ce3597851110001cf6248bde22c0b80f6400cb32cde2860e06337"; // OpenRouteService API Key
+
+        // Function to fetch coordinates
+        function fetchCoordinates(inputId, coordId, buttonId) {
+            const place = document.getElementById(inputId).value.trim();
+            const button = document.getElementById(buttonId);
+            if (!place) {
+                alert(`Please enter a place for ${inputId}`);
+                button.className = 'error';
+                return;
+            }
+
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&addressdetails=1`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const lat = data[0].lat;
+                        const lon = data[0].lon;
+                        document.getElementById(coordId).value = `${lon},${lat}`;
+                        
+                        // Add marker on the map
+                        L.marker([lat, lon]).addTo(map)
+                            .bindPopup(`${place}<br>Lat: ${lat}, Lon: ${lon}`)
+                            .openPopup();
+
+                        // Center map
+                        map.setView([lat, lon], 10);
+
+                        // Change button to success
+                        button.className = 'success';
+                    } else {
+                        alert(`No results found for ${place}`);
+                        document.getElementById(coordId).value = '';
+                        button.className = 'error';
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching geolocation:", error);
+                    alert("An error occurred while fetching the geolocation.");
+                    document.getElementById(coordId).value = '';
+                    button.className = 'error';
+                });
+        }
+
+        // Function to calculate route
+        function calculateRoute() {
+            const startInput = document.getElementById("start").value.trim();
+            const endInput = document.getElementById("end").value.trim();
+
+            if (!startInput || !endInput) {
+                alert("Please fetch both start and end coordinates!");
+                return;
+            }
+
+            const startCoords = startInput.split(",").map(Number);
+            const endCoords = endInput.split(",").map(Number);
+
+            if (startCoords.length !== 2 || endCoords.length !== 2) {
+                alert("Invalid coordinate format! Use Longitude, Latitude.");
+                return;
+            }
+
+            const url = "https://api.openrouteservice.org/v2/directions/driving-car";
+            const body = JSON.stringify({
+                coordinates: [startCoords, endCoords],
+            });
+
+            fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: API_KEY,
+                },
+                body: body,
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Error: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const distance = data.routes[0].summary.distance / 1000; // Convert meters to kilometers
+                    const totalDurationMinutes = data.routes[0].summary.duration / 60; // Convert seconds to minutes
+                    
+                    // Calculate hours and minutes
+                    const hours = Math.floor(totalDurationMinutes / 60);
+                    const minutes = Math.round(totalDurationMinutes % 60);
+
+                    document.getElementById("distance").textContent = `Distance: ${distance.toFixed(2)} km`;
+                    document.getElementById("duration").textContent = `Duration: ${hours} hour(s) and ${minutes} minute(s)`;
+                })
+                .catch(error => {
+                    console.error("Error fetching directions:", error);
+                    alert("An error occurred while fetching the route.");
+                });
+        }
+    </script>
+</body>
+</html>
